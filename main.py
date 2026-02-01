@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 from tqdm import tqdm
-COMET_API_KEY = "SHe5GzcOL0tkstUWRIoLQt5xY"
+COMET_API_KEY = ""
 
 device = torch.device("mps")
 
