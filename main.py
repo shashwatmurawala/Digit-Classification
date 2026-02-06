@@ -286,10 +286,84 @@ for epoch in range(CNN_EPOCHS):
     epoch_accuracy = correct_pred / total_pred
     print(f"Epoch {epoch + 1}, Loss: {total_epoch_loss}, Accuracy: {epoch_accuracy:.4f}")
 
-fig = plt.gcf()
-comet_model_2.log_figure(figure_name="MNIST_sample_images", figure=fig)
+
 
 '''TODO: Evaluate the CNN model!'''
 test_loss, test_acc = evaluate(cnn_model, testset_loader, cnn_loss_function, device)
 
 print('Test accuracy:', test_acc)
+
+test_image, test_label = test_dataset[0]
+test_image = test_image.to(device).unsqueeze(0)
+
+# put the model in evaluation (inference) mode
+cnn_model.eval()
+predictions_test_image = cnn_model(test_image)
+
+print(predictions_test_image)
+
+'''TODO: identify the digit with the highest likelihood prediction for the first
+    image in the test dataset. '''
+predictions_value = predictions_test_image.cpu().detach().numpy() #.cpu() to copy tensor to memory first
+prediction = np.argmax(predictions_value)
+print(prediction)
+print("Label of this digit is:", test_label)
+# Create new figure to avoid log-scale warning
+plt.figure()
+plt.imshow(test_image[0,0,:,:].cpu(), cmap=plt.cm.binary)
+plt.title(f"Prediction: {prediction}, Label: {test_label}")
+fig = plt.gcf()
+comet_model_2.log_figure(figure_name="MNIST_sample_images", figure=fig)
+
+# Initialize variables to store all data
+all_predictions = []
+all_labels = []
+all_images = []
+
+# Process test set in batches
+with torch.no_grad():
+    for images, labels in testset_loader:
+        # Move to device
+        images, labels = images.to(device), labels.to(device)
+        outputs = cnn_model(images)
+
+        # Apply softmax to get probabilities from the predicted logits
+        probabilities = torch.nn.functional.softmax(outputs, dim=1)
+
+        # Get predicted classes
+        predicted = torch.argmax(probabilities, dim=1)
+
+        all_predictions.append(probabilities)
+        all_labels.append(labels)
+        all_images.append(images)
+
+all_predictions = torch.cat(all_predictions)  # Shape: (total_samples, num_classes)
+all_labels = torch.cat(all_labels)            # Shape: (total_samples,)
+all_images = torch.cat(all_images)            # Shape: (total_samples, 1, 28, 28)
+
+# Convert tensors to NumPy for compatibility with plotting functions
+predictions = all_predictions.cpu().numpy()  # Shape: (total_samples, num_classes)
+test_labels = all_labels.cpu().numpy()       # Shape: (total_samples,)
+test_images = all_images.cpu().numpy()       # Shape: (total_samples, 1, 28, 28)
+
+#@title Change the slider to look at the model's predictions! { run: "auto" }
+
+image_index = 79 #@param {type:"slider", min:0, max:100, step:1}
+plt.figure(figsize=(10, 4))
+plt.subplot(1,2,1)
+mdl.lab2.plot_image_prediction(image_index, predictions, test_labels, test_images)
+plt.subplot(1,2,2)
+mdl.lab2.plot_value_prediction(image_index, predictions, test_labels)
+comet_model_2.log_figure(figure_name="Single_Prediction", figure=plt.gcf())
+
+num_rows = 5
+num_cols = 4
+num_images = num_rows*num_cols
+plt.figure(figsize=(2*2*num_cols, 2*num_rows))
+for i in range(num_images):
+  plt.subplot(num_rows, 2*num_cols, 2*i+1)
+  mdl.lab2.plot_image_prediction(i, predictions, test_labels, test_images)
+  plt.subplot(num_rows, 2*num_cols, 2*i+2)
+  mdl.lab2.plot_value_prediction(i, predictions, test_labels)
+comet_model_2.log_figure(figure_name="Multiple_Predictions", figure=plt.gcf())
+comet_model_2.end()
