@@ -179,27 +179,27 @@ testset_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 # FULLY CONNECTED MODEL TRAINING
 # ========================================================================
 
-print("\n" + "="*70)
-print("TRAINING FULLY CONNECTED MODEL")
-print("="*70 + "\n")
+# print("\n" + "="*70)
+# print("TRAINING FULLY CONNECTED MODEL")
+# print("="*70 + "\n")
 
-# Initialize model
-fc_model = FullyConnectedModel().to(device)
+# # Initialize model
+# fc_model = FullyConnectedModel().to(device)
 
-# Define loss function and optimizer
-loss_function = nn.CrossEntropyLoss()
-fc_optimizer = optim.Adam(fc_model.parameters(), lr=0.001)
+# # Define loss function and optimizer
+# loss_function = nn.CrossEntropyLoss()
+# fc_optimizer = optim.Adam(fc_model.parameters(), lr=0.001)
 
-# Train the model
-FC_EPOCHS = 5
-train(fc_model, trainset_loader, loss_function, fc_optimizer, device, FC_EPOCHS)
+# # Train the model
+# FC_EPOCHS = 5
+# train(fc_model, trainset_loader, loss_function, fc_optimizer, device, FC_EPOCHS)
 
-# End Comet experiment for FC model
-comet_model_1.end()
+# # End Comet experiment for FC model
+# comet_model_1.end()
 
-# Evaluate the fully connected model
-test_loss, test_acc = evaluate(fc_model, testset_loader, loss_function, device)
-print(f'\nFC Model Test Accuracy: {test_acc:.4f}')
+# # Evaluate the fully connected model
+# test_loss, test_acc = evaluate(fc_model, testset_loader, loss_function, device)
+# print(f'\nFC Model Test Accuracy: {test_acc:.4f}')
 
 # ========================================================================
 # CNN MODEL TRAINING
@@ -235,14 +235,14 @@ plotter = mdl.util.PeriodicPlotter(sec=2, xlabel='Iterations', ylabel='Loss', sc
 
 # Initialize new comet experiment
 comet_ml.init(project_name="6.s191lab2_part1_CNN")
-comet_model_2 = comet_ml.Experiment()
+comet_model_2 = comet_ml.Experiment(api_key=COMET_API_KEY)
 
 if hasattr(tqdm, '_instances'): tqdm._instances.clear() # clear if it exists
 
 # Training loop!
 cnn_model.train()
 
-for epoch in range(epochs):
+for epoch in range(CNN_EPOCHS):
     total_loss = 0
     correct_pred = 0
     total_pred = 0
@@ -256,7 +256,7 @@ for epoch in range(epochs):
         logits = cnn_model(images)
 
         # TODO: compute the categorical cross entropy loss using the predicted logits
-        loss = cnn_loss_function(images, labels)
+        loss = cnn_loss_function(logits, labels)
 
         # Get the loss and log it to comet and the loss_history record
         loss_value = loss.item()
@@ -286,4 +286,10 @@ for epoch in range(epochs):
     epoch_accuracy = correct_pred / total_pred
     print(f"Epoch {epoch + 1}, Loss: {total_epoch_loss}, Accuracy: {epoch_accuracy:.4f}")
 
-comet_model_2.log_figure(figure=plt)
+fig = plt.gcf()
+comet_model_2.log_figure(figure_name="MNIST_sample_images", figure=fig)
+
+'''TODO: Evaluate the CNN model!'''
+test_loss, test_acc = evaluate(cnn_model, testset_loader, cnn_loss_function, device)
+
+print('Test accuracy:', test_acc)
