@@ -1,18 +1,14 @@
 # Import PyTorch and other relevant libraries
-from cProfile import label
 import comet_ml
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
-from torchsummary import summary
 import mitdeeplearning as mdl
 import matplotlib.pyplot as plt
 import numpy as np
-import random
 from tqdm import tqdm
 
 # Constants
@@ -23,6 +19,8 @@ COMET_API_KEY = ""
 # ============================================================================
 
 class FullyConnectedModel(nn.Module):
+    """Simple fully connected neural network for MNIST digit classification."""
+    
     def __init__(self):
         super(FullyConnectedModel, self).__init__()
         self.flatten = nn.Flatten()
@@ -39,29 +37,32 @@ class FullyConnectedModel(nn.Module):
 
 
 class CNN(nn.Module):
+    """Convolutional Neural Network for MNIST digit classification."""
+    
     def __init__(self):
         super(CNN, self).__init__()
-        # First convolutional layer
+        # First convolutional layer: 1 input channel, 24 output channels, 3x3 kernel
         self.conv1 = nn.Conv2d(1, 24, kernel_size=3)
-        # First max pooling layer
+        # First max pooling layer: 2x2 pooling
         self.pool1 = nn.MaxPool2d(kernel_size=2)
-        # Second convolutional layer
+        # Second convolutional layer: 24 input channels, 36 output channels, 3x3 kernel
         self.conv2 = nn.Conv2d(24, 36, kernel_size=3)
-        # Second max pooling layer
+        # Second max pooling layer: 2x2 pooling
         self.pool2 = nn.MaxPool2d(kernel_size=2)
         
+        # Flatten and fully connected layers
         self.flatten = nn.Flatten()
         self.fc1 = nn.Linear(36 * 5 * 5, 128)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(128, 10)
 
     def forward(self, x):
-        # First convolutional and pooling layers
+        # First convolutional block
         x = self.conv1(x)
         x = self.relu(x)
         x = self.pool1(x)
         
-        # Second convolutional and pooling layers
+        # Second convolutional block
         x = self.conv2(x)
         x = self.relu(x)
         x = self.pool2(x)
@@ -76,45 +77,8 @@ class CNN(nn.Module):
 
 
 # ============================================================================
-# TRAINING AND EVALUATION FUNCTIONS
+# EVALUATION FUNCTION
 # ============================================================================
-
-def train(model, dataloader, criterion, optimizer, device, epochs):
-    """Train the model for a specified number of epochs."""
-    model.train()
-    for epoch in range(epochs):
-        total_loss = 0
-        correct_pred = 0
-        total_pred = 0
-
-        for images, labels in dataloader:
-            # Move tensors to device
-            images, labels = images.to(device), labels.to(device)
-
-            # Forward pass
-            outputs = model(images)
-
-            # Clear gradients before performing backward pass
-            optimizer.zero_grad()
-            # Calculate loss based on model predictions
-            loss = criterion(outputs, labels)
-            # Backpropagate and update model parameters
-            loss.backward()
-            optimizer.step()
-
-            # Multiply loss by total nos. of samples in batch
-            total_loss += loss.item() * images.size(0)
-
-            # Calculate accuracy
-            predicted = torch.argmax(outputs, dim=1)
-            correct_pred += (predicted == labels).sum().item()
-            total_pred += labels.size(0)
-
-        # Compute metrics
-        total_epoch_loss = total_loss / total_pred
-        epoch_accuracy = correct_pred / total_pred
-        print(f"Epoch {epoch + 1}, Loss: {total_epoch_loss}, Accuracy: {epoch_accuracy:.4f}")
-
 
 def evaluate(model, dataloader, criterion, device):
     """Evaluate model performance on the test dataset."""
@@ -126,7 +90,7 @@ def evaluate(model, dataloader, criterion, device):
     # Disable gradient calculations when in inference mode
     with torch.no_grad():
         for images, labels in dataloader:
-            # Ensure evaluation happens on the GPU
+            # Ensure evaluation happens on the GPU/MPS
             images, labels = images.to(device), labels.to(device)
 
             # Feed the images into the model and obtain the predictions
@@ -155,51 +119,22 @@ def evaluate(model, dataloader, criterion, device):
 # MAIN EXECUTION
 # ============================================================================
 
-# Setup device
+# Setup device (use MPS for Mac M1/M2, CUDA for NVIDIA GPUs, or CPU)
 device = torch.device("mps")
 
-# Initialize Comet.ml experiment
-comet_model_1 = comet_ml.Experiment(api_key=COMET_API_KEY, project_name="digit-classification")
-
-# Data preprocessing
+# Data preprocessing - convert images to tensors
 transform = transforms.Compose([
     transforms.ToTensor()
 ])
 
-# Load datasets
+# Load MNIST datasets
 train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
 test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
 
-# Create DataLoaders
+# Create DataLoaders for batching
 BATCH_SIZE = 64
 trainset_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 testset_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-# ========================================================================
-# FULLY CONNECTED MODEL TRAINING
-# ========================================================================
-
-# print("\n" + "="*70)
-# print("TRAINING FULLY CONNECTED MODEL")
-# print("="*70 + "\n")
-
-# # Initialize model
-# fc_model = FullyConnectedModel().to(device)
-
-# # Define loss function and optimizer
-# loss_function = nn.CrossEntropyLoss()
-# fc_optimizer = optim.Adam(fc_model.parameters(), lr=0.001)
-
-# # Train the model
-# FC_EPOCHS = 5
-# train(fc_model, trainset_loader, loss_function, fc_optimizer, device, FC_EPOCHS)
-
-# # End Comet experiment for FC model
-# comet_model_1.end()
-
-# # Evaluate the fully connected model
-# test_loss, test_acc = evaluate(fc_model, testset_loader, loss_function, device)
-# print(f'\nFC Model Test Accuracy: {test_acc:.4f}')
 
 # ========================================================================
 # CNN MODEL TRAINING
@@ -209,113 +144,110 @@ print("\n" + "="*70)
 print("TRAINING CNN MODEL")
 print("="*70 + "\n")
 
-# Initialize CNN model
+# Initialize CNN model and move to device
 cnn_model = CNN().to(device)
-
-# Test the model with a sample image
-image, label = train_dataset[0]
-image = image.to(device).unsqueeze(0)  # Add batch dimension → Shape: (1, 1, 28, 28)
-output = cnn_model(image)
 
 # Print the model architecture
 print(cnn_model)
+print()
 
-# Define hyperparameters for CNN
+# Define hyperparameters
 CNN_EPOCHS = 7
 cnn_optimizer = optim.SGD(cnn_model.parameters(), lr=1e-2)
 cnn_loss_function = nn.CrossEntropyLoss()
 
-# Train CNN model
-train(cnn_model, trainset_loader, cnn_loss_function, cnn_optimizer, device, CNN_EPOCHS)
-cnn_test_loss, cnn_test_acc = evaluate(cnn_model, testset_loader, cnn_loss_function, device)
-print(f'\nCNN Model Test Accuracy: {cnn_test_acc:.4f}')
+# Initialize Comet.ml experiment for tracking
+comet_ml.init(project_name="6.s191lab2_part1_CNN")
+comet_model = comet_ml.Experiment(api_key=COMET_API_KEY)
 
-loss_history = mdl.util.LossHistory(smoothing_factor=0.95) # to record the evolution of the loss
+# Initialize loss tracking and plotting utilities
+loss_history = mdl.util.LossHistory(smoothing_factor=0.95)
 plotter = mdl.util.PeriodicPlotter(sec=2, xlabel='Iterations', ylabel='Loss', scale='semilogy')
 
-# Initialize new comet experiment
-comet_ml.init(project_name="6.s191lab2_part1_CNN")
-comet_model_2 = comet_ml.Experiment(api_key=COMET_API_KEY)
+# Clear any existing tqdm instances
+if hasattr(tqdm, '_instances'): 
+    tqdm._instances.clear()
 
-if hasattr(tqdm, '_instances'): tqdm._instances.clear() # clear if it exists
-
-# Training loop!
+# Training loop
 cnn_model.train()
 
 for epoch in range(CNN_EPOCHS):
-    total_loss = 0
     correct_pred = 0
     total_pred = 0
 
-    # First grab a batch of training data which our data loader returns as a tensor
+    # Iterate through batches with progress bar
     for idx, (images, labels) in enumerate(tqdm(trainset_loader)):
         images, labels = images.to(device), labels.to(device)
 
-        # Forward pass
-        # TODO: feed the images into the model and obtain the predictions
+        # Forward pass: feed images into model and get predictions
         logits = cnn_model(images)
 
-        # TODO: compute the categorical cross entropy loss using the predicted logits
+        # Compute the categorical cross entropy loss
         loss = cnn_loss_function(logits, labels)
 
-        # Get the loss and log it to comet and the loss_history record
+        # Log loss to Comet.ml and loss history
         loss_value = loss.item()
-        comet_model_2.log_metric("loss", loss_value, step=idx)
-        loss_history.append(loss_value) # append the loss to the loss_history record
+        comet_model.log_metric("loss", loss_value, step=idx + epoch * len(trainset_loader))
+        loss_history.append(loss_value)
         plotter.plot(loss_history.get())
 
-        # Backpropagation/backward pass
-        '''TODO: Compute gradients for all model parameters and propagate backwads
-            to update model parameters. remember to reset your optimizer!'''
-        # TODO: reset optimizer
-        # TODO: compute gradients
-        # TODO: update model parameters
-
+        # Backpropagation: reset gradients, compute gradients, update weights
         cnn_optimizer.zero_grad()
         loss.backward()
         cnn_optimizer.step()
 
-
-        # Get the prediction and tally metrics
+        # Calculate accuracy metrics
         predicted = torch.argmax(logits, dim=1)
         correct_pred += (predicted == labels).sum().item()
         total_pred += labels.size(0)
 
-    # Compute metrics
-    total_epoch_loss = total_loss / total_pred
+    # Display epoch metrics
     epoch_accuracy = correct_pred / total_pred
-    print(f"Epoch {epoch + 1}, Loss: {total_epoch_loss}, Accuracy: {epoch_accuracy:.4f}")
+    print(f"Epoch {epoch + 1}/{CNN_EPOCHS}, Accuracy: {epoch_accuracy:.4f}")
 
 
+# ========================================================================
+# MODEL EVALUATION
+# ========================================================================
 
-'''TODO: Evaluate the CNN model!'''
+print("\n" + "="*70)
+print("EVALUATING CNN MODEL")
+print("="*70 + "\n")
+
+# Evaluate model on test set
 test_loss, test_acc = evaluate(cnn_model, testset_loader, cnn_loss_function, device)
+print(f'Test Accuracy: {test_acc:.4f}')
+print(f'Test Loss: {test_loss:.4f}\n')
 
-print('Test accuracy:', test_acc)
+# ========================================================================
+# SINGLE IMAGE PREDICTION EXAMPLE
+# ========================================================================
 
+# Get first test image and make prediction
 test_image, test_label = test_dataset[0]
-test_image = test_image.to(device).unsqueeze(0)
+test_image_tensor = test_image.to(device).unsqueeze(0)
 
-# put the model in evaluation (inference) mode
+# Put model in evaluation mode
 cnn_model.eval()
-predictions_test_image = cnn_model(test_image)
+predictions_test_image = cnn_model(test_image_tensor)
 
-print(predictions_test_image)
-
-'''TODO: identify the digit with the highest likelihood prediction for the first
-    image in the test dataset. '''
-predictions_value = predictions_test_image.cpu().detach().numpy() #.cpu() to copy tensor to memory first
+# Get predicted digit (highest probability)
+predictions_value = predictions_test_image.cpu().detach().numpy()
 prediction = np.argmax(predictions_value)
-print(prediction)
-print("Label of this digit is:", test_label)
-# Create new figure to avoid log-scale warning
+print(f"Single Image Prediction: {prediction}, Actual Label: {test_label}")
+
+# Visualize single prediction
 plt.figure()
-plt.imshow(test_image[0,0,:,:].cpu(), cmap=plt.cm.binary)
+plt.imshow(test_image_tensor[0, 0, :, :].cpu(), cmap=plt.cm.binary)
 plt.title(f"Prediction: {prediction}, Label: {test_label}")
 fig = plt.gcf()
-comet_model_2.log_figure(figure_name="MNIST_sample_images", figure=fig)
+comet_model.log_figure(figure_name="MNIST_sample_images", figure=fig)
 
-# Initialize variables to store all data
+# ========================================================================
+# BATCH PREDICTIONS AND VISUALIZATION
+# ========================================================================
+
+# Collect all predictions for visualization
 all_predictions = []
 all_labels = []
 all_images = []
@@ -323,47 +255,50 @@ all_images = []
 # Process test set in batches
 with torch.no_grad():
     for images, labels in testset_loader:
-        # Move to device
         images, labels = images.to(device), labels.to(device)
         outputs = cnn_model(images)
 
-        # Apply softmax to get probabilities from the predicted logits
+        # Apply softmax to get probabilities from logits
         probabilities = torch.nn.functional.softmax(outputs, dim=1)
-
-        # Get predicted classes
-        predicted = torch.argmax(probabilities, dim=1)
 
         all_predictions.append(probabilities)
         all_labels.append(labels)
         all_images.append(images)
 
+# Concatenate all batches
 all_predictions = torch.cat(all_predictions)  # Shape: (total_samples, num_classes)
 all_labels = torch.cat(all_labels)            # Shape: (total_samples,)
 all_images = torch.cat(all_images)            # Shape: (total_samples, 1, 28, 28)
 
-# Convert tensors to NumPy for compatibility with plotting functions
-predictions = all_predictions.cpu().numpy()  # Shape: (total_samples, num_classes)
-test_labels = all_labels.cpu().numpy()       # Shape: (total_samples,)
-test_images = all_images.cpu().numpy()       # Shape: (total_samples, 1, 28, 28)
+# Convert to NumPy for plotting
+predictions = all_predictions.cpu().numpy()
+test_labels = all_labels.cpu().numpy()
+test_images = all_images.cpu().numpy()
 
-#@title Change the slider to look at the model's predictions! { run: "auto" }
-
-image_index = 79 #@param {type:"slider", min:0, max:100, step:1}
+# Visualize single prediction with probability distribution
+image_index = 79
 plt.figure(figsize=(10, 4))
-plt.subplot(1,2,1)
+plt.subplot(1, 2, 1)
 mdl.lab2.plot_image_prediction(image_index, predictions, test_labels, test_images)
-plt.subplot(1,2,2)
+plt.subplot(1, 2, 2)
 mdl.lab2.plot_value_prediction(image_index, predictions, test_labels)
-comet_model_2.log_figure(figure_name="Single_Prediction", figure=plt.gcf())
+comet_model.log_figure(figure_name="Single_Prediction", figure=plt.gcf())
 
+# Visualize multiple predictions in a grid
 num_rows = 5
 num_cols = 4
-num_images = num_rows*num_cols
-plt.figure(figsize=(2*2*num_cols, 2*num_rows))
+num_images = num_rows * num_cols
+plt.figure(figsize=(2 * 2 * num_cols, 2 * num_rows))
 for i in range(num_images):
-  plt.subplot(num_rows, 2*num_cols, 2*i+1)
-  mdl.lab2.plot_image_prediction(i, predictions, test_labels, test_images)
-  plt.subplot(num_rows, 2*num_cols, 2*i+2)
-  mdl.lab2.plot_value_prediction(i, predictions, test_labels)
-comet_model_2.log_figure(figure_name="Multiple_Predictions", figure=plt.gcf())
-comet_model_2.end()
+    plt.subplot(num_rows, 2 * num_cols, 2 * i + 1)
+    mdl.lab2.plot_image_prediction(i, predictions, test_labels, test_images)
+    plt.subplot(num_rows, 2 * num_cols, 2 * i + 2)
+    mdl.lab2.plot_value_prediction(i, predictions, test_labels)
+comet_model.log_figure(figure_name="Multiple_Predictions", figure=plt.gcf())
+
+# End Comet experiment
+comet_model.end()
+
+print("\n" + "="*70)
+print("TRAINING COMPLETE - Check Comet.ml for visualizations!")
+print("="*70)
